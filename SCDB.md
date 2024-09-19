@@ -206,7 +206,7 @@ Additional commands are prefixed by `-a:<cmd>=` and then a valid type. Such as: 
 
 Plus, you can add `-o:json` to get a `json` representation of the data changed (only works for `get`)
 
-`scdb exec getTables.scql -o:json >> out.json
+`scdb exec getTables.scql -o:json >> out.json`
 
 ```json
 {
