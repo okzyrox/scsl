@@ -91,10 +91,11 @@ RelationTable UserJobs:
 
 Attributes are added alongside field definitions to define their special properties, the following are the list of attributes.
 - `primaryKey` - Only allowed 1-2 times per table, not all fields can be primaryKeys
-- `upSequence` + `downSequence` - Used for `Int` and also requires `start` and `primaryKey`. Indicates the direction that new primary key ids should be created in. Default increment is 1.
-- `autoIncrement: <Bool>` - Defines if new entities auto increment for an integer primaryKey
-- `change: <Int>` Cannot be negative, indicates the increment / decrement.
-- `start: <Int>` - Used in tandem with the previous one to indicate the starting value for the first entity in the Table
+- `unique`:
+	- `upSequence` + `downSequence` - Used for `Int` and also requires `start` and `unique`. Indicates the direction that new primary key ids should be created in. Default increment is 1.
+	- `change: <Int>` Cannot be negative, indicates the increment / decrement.
+	- `start: <Int>` - Used in tandem with the previous one to indicate the starting value for the first entity in the Table
+
 - `default: <String|Int|Float|Bool|Table|Json|Enum>` - Used to indicate the default value for the specific field on a table, can be of any type except array. Arrays are automatically empty on new entities.
 - `null: <Bool>` - Indicates whether the field can be null or not. Default is `False`
 - `blank: <Bool>` - Indicates whether the field can be blank or not, meaning it is never assigned a value. Cannot be used alongside `null:`. Default is `False`
