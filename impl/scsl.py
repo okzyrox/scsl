@@ -3,9 +3,11 @@
 ## LICENSE: MIT
 
 
+import os
 import json
 import enum
 import pickle
+from cryptography.fernet import Fernet
 from typing import Any, Dict, List, Optional, Type, Union
 
 class RelationType(enum.Enum):
@@ -176,22 +178,234 @@ class Database:
                     field_dict["relation_type"] = str(field.relation_type)
                 schema[name][field_name] = field_dict
         return json.dumps(schema, indent=4, default=Table._json_serializer)
+    
+    def _python_type_to_scsl(self, python_type: str) -> str:
+        match python_type:
+            case "str": return "String"
+            case "int": return "Integer"
+            case "bool": return "Bool"
+            case "float": return "Float"
+            case _: return python_type ## for models so they are supported
+    
+    def serialize_to_binary(self):
+        import struct
 
-    def save_to_file(self, filename: str):
-        with open(filename, 'wb') as f:
-            # todo:
-                # standard encoding style (no pickle?)
-                # encryption with key + randomization/salt?
-            pickle.dump((self.tables, self.data), f)
+        def encode_string(s):
+            encoded = s.encode('utf-8')
+            return struct.pack('!I', len(encoded)) + encoded
+
+        def encode_value(value):
+            if isinstance(value, str):
+                return b'\x01' + encode_string(value)
+            elif isinstance(value, int):
+                return b'\x02' + struct.pack('!q', value)
+            elif isinstance(value, float):
+                return b'\x03' + struct.pack('!d', value)
+            elif isinstance(value, bool):
+                return b'\x04' + struct.pack('!?', value)
+            ## TODO: char, enum, arrays(?), BinaryField stuf,
+            elif value is None:
+                return b'\x05'
+            elif isinstance(value, Table):
+                return b'\x06' + encode_string(value.__class__.__name__) + struct.pack('!q', id(value))
+            else:
+                raise ValueError(f"Unsupported type: {type(value)}")
+
+        binary_data = b''
+
+        # da tables (this took me too long to figure out)
+        binary_data += struct.pack('!I', len(self.tables))
+        for table_name, table_class in self.tables.items():
+            binary_data += encode_string(table_name)
+            binary_data += struct.pack('!I', len(table_class._fields))
+            for field_name, field in table_class._fields.items():
+                binary_data += encode_string(field_name)
+                binary_data += encode_string(field.__class__.__name__)
+                if isinstance(field, RelationField):
+                    binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
+                    binary_data += encode_string(str(field.relation_type))
+
+        # cba to write a json converter for all the types
+        # because that sucks
+        binary_data += struct.pack('!I', len(self.data))
+        for table_name, records in self.data.items():
+            binary_data += encode_string(table_name)
+            binary_data += struct.pack('!I', len(records))
+            for record in records:
+                binary_data += struct.pack('!I', len(record._fields))
+                for field_name, field in record._fields.items():
+                    binary_data += encode_string(field_name)
+                    value = getattr(record, field_name)
+                    binary_data += encode_value(value)
+
+        return binary_data
 
     @classmethod
-    def load_from_file(cls, filename: str) -> 'Database':
-        with open(filename, 'rb') as f:
-            tables, data = pickle.load(f)
+    def deserialize_from_binary(cls, binary_data):
+        ## after reading the documentation far too many times
+        ## i still dont know what its doing entirely
+        ## but hey we got binary encoding for data
+        import struct
+
+        def decode_string():
+            nonlocal index
+            length = struct.unpack('!I', binary_data[index:index+4])[0]
+            index += 4
+            string = binary_data[index:index+length].decode('utf-8')
+            index += length
+            return string
+
+        def decode_value():
+            nonlocal index
+            value_type = binary_data[index]
+            index += 1
+            if value_type == 0x01:
+                return decode_string()
+            elif value_type == 0x02:
+                value = struct.unpack('!q', binary_data[index:index+8])[0]
+                index += 8
+                return value
+            elif value_type == 0x03:
+                value = struct.unpack('!d', binary_data[index:index+8])[0]
+                index += 8
+                return value
+            elif value_type == 0x04:
+                value = struct.unpack('!?', binary_data[index:index+1])[0]
+                index += 1
+                return value
+            elif value_type == 0x05:
+                return None
+            elif value_type == 0x06:
+                table_name = decode_string()
+                obj_id = struct.unpack('!q', binary_data[index:index+8])[0]
+                index += 8
+                return (table_name, obj_id)
+            else:
+                raise ValueError(f"Unsupported value type: {value_type}")
+
+        index = 0
         db = cls()
-        db.tables = tables
-        db.data = data
+
+        # tables
+        num_tables = struct.unpack('!I', binary_data[index:index+4])[0]
+        index += 4
+        for _ in range(num_tables):
+            table_name = decode_string()
+            num_fields = struct.unpack('!I', binary_data[index:index+4])[0]
+            index += 4
+            fields = {}
+            for _ in range(num_fields):
+                field_name = decode_string()
+                field_type = decode_string()
+                if field_type == 'RelationField':
+                    to = decode_string()
+                    relation_type = RelationType(decode_string())
+                    fields[field_name] = RelationField(to=to, relation_type=relation_type)
+                else:
+                    field_class = globals()[field_type]
+                    fields[field_name] = field_class()
+            table_class = type(table_name, (Table,), fields)
+            db.add_table(table_class)
+
+        # data
+        num_data_tables = struct.unpack('!I', binary_data[index:index+4])[0]
+        index += 4
+        for _ in range(num_data_tables):
+            table_name = decode_string()
+            num_records = struct.unpack('!I', binary_data[index:index+4])[0]
+            index += 4
+            for _ in range(num_records):
+                num_fields = struct.unpack('!I', binary_data[index:index+4])[0]
+                index += 4
+                record_data = {}
+                for _ in range(num_fields):
+                    field_name = decode_string()
+                    value = decode_value()
+                    record_data[field_name] = value
+                record = db.tables[table_name](**record_data)
+                db.add_record(table_name, record)
+
         return db
+
+    def to_scsl(self) -> str:
+        schema = []
+        for table_name, table in self.tables.items():
+            schema.append(f"Table {table_name}:")
+            for field_name, field in table._fields.items():
+                field_def = f"    {self._python_type_to_scsl(field.field_type.__name__)} {field_name}"
+                attributes = []
+                if field.primary_key:
+                    attributes.append("primaryKey")
+                if field.null:
+                    attributes.append("null: True")
+                if field.unique:
+                    attributes.append("unique")
+                if field.default is not None:
+                    attributes.append(f"default: {repr(field.default)}")
+                if isinstance(field, StringField):
+                    attributes.append(f"size: {field.attributes.get('max_length', 255)}")
+                if isinstance(field, (IntegerField, FloatField)):
+                    if field.min_value is not None:
+                        attributes.append(f"min: {field.min_value}")
+                    if field.max_value is not None:
+                        attributes.append(f"max: {field.max_value}")
+                # wack ngl, might remove it but i gotta say it looks way cleaner than the original in the write up file
+
+                # Torn between "Relation:ONE_TO_ONE" or "Relation<ONE_TO_ONE>"
+                # using the latter right now because it makes the attribute clearer to see
+                if isinstance(field, RelationField):
+                    #to_table = field.to if isinstance(field.to, str) else field.to.__name__
+                    attributes.append(f"Relation<{field.relation_type}>")
+                
+                if attributes:
+                    field_def += " {" + ", ".join(attributes) + "}"
+                schema.append(field_def)
+            schema.append("") # padding between tables
+        return "\n".join(schema)
+
+    def save_to_file(self, filename: str, format: str, encryption_key = None):
+        ## Formats:
+        ## 'json', 'scsl', 'binary/bin/scdb'
+
+        ## 'json' returns a jsonization of the schema made to make the database
+        ## 'scsl' does the same but for the scsl format (still WIP)
+        ## 'bin/binary/scdb' is where the actual objects and data in the db are stored.
+        ## might split the schema part from the data part later idk
+
+
+        if format == "binary" or format == "bin" or format == "scdb":
+            binary_data = self.serialize_to_binary()
+            if encryption_key:
+                f = Fernet(encryption_key)
+                encrypted_data = f.encrypt(binary_data)
+                with open(filename, 'wb') as file:
+                    file.write(encrypted_data)
+            else:
+                with open(filename, 'wb') as file:
+                    file.write(binary_data)
+        elif format == 'json':
+            with open(filename, 'w') as f:
+                json.dump(json.loads(self.to_json()), f, indent=4)
+        elif format == 'scsl':
+            with open(filename, 'w') as f:
+                f.write(self.to_scsl())
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+
+    @classmethod
+    def load_from_file(cls, filename: str, encryption_key = None) -> 'Database':
+        name, ext = os.path.splitext(filename)
+        if ext == ".bin" or ext == ".scdb":
+            with open(filename, 'rb') as f:
+                data = f.read()
+            if encryption_key:
+                f = Fernet(encryption_key)
+                decrypted_data = f.decrypt(data)
+            else:
+                decrypted_data = data
+            return cls.deserialize_from_binary(decrypted_data)
+        else:
+            raise ValueError(f"Invalid Database format to load from: {ext}")
 
 # Test stuff
 if __name__ == "__main__":
@@ -238,15 +452,21 @@ if __name__ == "__main__":
     newJob.person = person
     db.add_record("Job", newJob)
     print("Saving")
-    db.save_to_file("people.db")
+    db.save_to_file("people.pickdb", "pickledata")
     print("Reloading")
-    loaded_db = Database.load_from_file("people.db")
+    loaded_db = Database.load_from_file("people.pickdb")
 
-    with open("schema.json", 'w') as schemaFile:
-        schemaFile.write(loaded_db.to_json())
-        # Currently it is designed to only write the schema to a json file
-        # whether i call this a security feature or lacking of features i dont know..
+    loaded_db.save_to_file("schema.json", "json")
+    loaded_db.save_to_file("generated_schema.scsl", "scsl")
+    loaded_db.save_to_file("people.pickdb", "pickledata")
+    loaded_db.save_to_file("people.scdb", "bin")
+    loaded_db.save_to_file("people_e.scdb", "bin", Fernet.generate_key())
     for tableName, values in loaded_db.data.items():
         print("Objects for:", tableName)
         for obj in values:
             print("     ", obj)
+    
+
+    ## reminder that good practice is to load the database if it exists, make modifications to the database table, then save over the database
+    ## if it doesnt exist then save first then the previou steps
+    ## aslong as the DB still has the table added before loading is done it should be fine

@@ -1,0 +1,25 @@
+{
+    "name": "scsl-syntax",
+    "displayName": "SCSL Syntax Highlighter",
+    "description": "for the people that cant program without a highlighter (me)",
+    "version": "0.0.1",
+    "engines": {
+      "vscode": "^1.91.0"
+    },
+    "categories": [
+      "Programming Languages"
+    ],
+    "contributes": {
+      "languages": [{
+        "id": "scsl",
+        "aliases": ["Super Cool Structure Language", "scsl"],
+        "extensions": [".scsl"],
+        "configuration": "./language-configuration.json"
+      }],
+      "grammars": [{
+        "language": "scsl",
+        "scopeName": "source.scsl",
+        "path": "./syntaxes/scsl.tmLanguage.json"
+      }]
+    }
+}

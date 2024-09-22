@@ -1,2 +1,8 @@
 *.json
 *.db
+generated_schema.scsl
+*.scdb
+*.pickdb
+testdata/*
+__pycache__
+!ext/**

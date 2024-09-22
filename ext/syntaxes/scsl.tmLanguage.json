@@ -1,0 +1,73 @@
+{
+    "name": "SCSL Schema Language",
+    "scopeName": "source.scsl",
+    "fileTypes": ["scsl"],
+    "patterns": [
+      {
+        "name": "keyword.control.scsl",
+        "match": "\\b(Table|Enum|RelationTable)\\b"
+      },
+      {
+        "name": "storage.type.scsl",
+        "match": "\\b(Char|String|Bool|Integer|Int8|Int16|Int32|Int64|Int128|i8|i16|i32|i64|i128|Float|Float8|Float16|Float32|Float64|Float128|f8|f16|f32|f64|f128|Date|Time|DateTime|Json|Binary|Array|Relation)\\b"
+      },
+      {
+        "name": "storage.modifier.scsl",
+        "match": "\\b(primaryKey|unique|upSequence|downSequence|change|start|default|null|blank|uses|maxJsonDepth)\\b"
+      },
+      {
+        "name": "constant.language.scsl",
+        "match": "\\b(True|False)\\b"
+      },
+      {
+        "name": "constant.numeric.scsl",
+        "match": "\\b\\d+\\b"
+      },
+      {
+        "name": "string.quoted.double.scsl",
+        "begin": "\"",
+        "end": "\"",
+        "patterns": [
+          {
+            "name": "constant.character.escape.scsl",
+            "match": "\\\\."
+          }
+        ]
+      },
+      {
+        "name": "string.quoted.single.scsl",
+        "begin": "'",
+        "end": "'",
+        "patterns": [
+          {
+            "name": "constant.character.escape.scsl",
+            "match": "\\\\."
+          }
+        ]
+      },
+      {
+        "name": "comment.line.number-sign.scsl",
+        "match": "#.*$"
+      },
+      {
+        "name": "entity.name.type.scsl",
+        "match": "\\b([A-Z][a-zA-Z0-9]*)\\b"
+      },
+      {
+        "name": "variable.other.scsl",
+        "match": "\\b([a-z][a-zA-Z0-9]*)\\b"
+      },
+      {
+        "name": "keyword.operator.scsl",
+        "match": "(=|:)"
+      },
+      {
+        "name": "punctuation.definition.block.scsl",
+        "match": "[{}]"
+      },
+      {
+        "name": "support.type.relation.scsl",
+        "match": "\\b(OneToOne|OneToMany|ManyToMany)\\b"
+      }
+    ]
+  }

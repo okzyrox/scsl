@@ -1,7 +1,8 @@
 ### scsl python TODO LIST:
-- [x] saving to json
-- [x] saving to db file
-- [x] loading from db file
+- [x] saving to json (schema)
+- [x] saving to scsl (schema)
+- [x] saving to an encoded db file
+- [x] loading from an encoded db file
 - [ ] Tables:
     - [x] Creation
     - [x] Modification
