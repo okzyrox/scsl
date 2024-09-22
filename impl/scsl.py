@@ -6,7 +6,6 @@
 import os
 import json
 import enum
-import pickle
 from cryptography.fernet import Fernet
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -452,14 +451,12 @@ if __name__ == "__main__":
     newJob.person = person
     db.add_record("Job", newJob)
     print("Saving")
-    db.save_to_file("people.pickdb", "pickledata")
+    db.save_to_file("people.scdb", "bin")
     print("Reloading")
-    loaded_db = Database.load_from_file("people.pickdb")
+    loaded_db = Database.load_from_file("people.scdb")
 
     loaded_db.save_to_file("schema.json", "json")
     loaded_db.save_to_file("generated_schema.scsl", "scsl")
-    loaded_db.save_to_file("people.pickdb", "pickledata")
-    loaded_db.save_to_file("people.scdb", "bin")
     loaded_db.save_to_file("people_e.scdb", "bin", Fernet.generate_key())
     for tableName, values in loaded_db.data.items():
         print("Objects for:", tableName)
