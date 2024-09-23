@@ -142,7 +142,10 @@ class Table(metaclass=TableMeta):
     def __str__(self):
         # i only recently learnt of self.__class__.__name__
         # that wouldve saved sooo many headaches in previous projects if i knew
-        return str(self.__class__.__name__) + ": " + ', '.join([f"{key} = {value}" for key, value in self.to_dict().items()])
+        return str(self.__class__.__name__) + "(" + ', '.join([f"{key} = {value}" for key, value in self.to_dict().items()]) + ")"
+
+    def __repr__(self):
+        return str(self)
 
 
     # might add a to_table_str function which prints it out prettily looking like a 
@@ -238,6 +241,21 @@ class Database:
                     binary_data += encode_value(value)
 
         return binary_data
+
+    def get(self, table_name, **kwargs) -> List[Table] | Table:
+        table = self.get_table(table_name)
+        if table is None:
+            raise ValueError(f"Table {table_name} does not exist in the database")
+        records = [record for record in self.data[table_name] if all(getattr(record, field_name) == value for field_name, value in kwargs.items())]
+        if len(records) == 1:
+            return records[0]
+        return records
+    
+    def all(self, table_name) -> List[Table]:
+        table = self.get_table(table_name)
+        if table is None:
+            raise ValueError(f"Table {table_name} does not exist in the database")
+        return self.data[table_name]
 
     @classmethod
     def deserialize_from_binary(cls, binary_data):
@@ -405,65 +423,3 @@ class Database:
             return cls.deserialize_from_binary(decrypted_data)
         else:
             raise ValueError(f"Invalid Database format to load from: {ext}")
-
-# Test stuff
-if __name__ == "__main__":
-    class Person(Table):
-        name = StringField(max_length=100)
-        age = IntegerField(min_value=0, max_value=120)
-        is_active = BooleanField(default=True)
-
-    class Job(Table):
-        title = StringField(max_length=100)
-        salary = FloatField(min_value=0)
-        person = RelationField(to=Person, relation_type=RelationType.ONE_TO_ONE, null=True)
-
-    db = Database()
-    db.add_table(Person)
-    db.add_table(Job)
-
-    person = Person(name="Alice", age=30)
-    db.add_record("Person", person)
-
-    job = Job(title="Software Developer", salary=75000.0, person=person)
-    db.add_record("Job", job)
-
-    for tableName, values in db.data.items():
-        print("Objects for:", tableName)
-        for obj in values:
-            print("     ", obj)
-
-    
-    print("Changing")
-    # Validation failures cause exception, so youd want to design around try:, except: blocks otherwise your database system might crash :)
-    job.salary = 55000.0
-    person.name = "James"
-    person.age = 24
-
-    try:
-        person.age = 121
-    except Exception as e: # Fails as its above the maximum
-        print(e)
-    
-    newJob = Job(title = "Database Engineer", salary=1.0)
-    job.person = None 
-    # The tables are linked to the database tables, so you dont have to worry about mismatches and outdated version of tables
-    newJob.person = person
-    db.add_record("Job", newJob)
-    print("Saving")
-    db.save_to_file("people.scdb", "bin")
-    print("Reloading")
-    loaded_db = Database.load_from_file("people.scdb")
-
-    loaded_db.save_to_file("schema.json", "json")
-    loaded_db.save_to_file("generated_schema.scsl", "scsl")
-    loaded_db.save_to_file("people_e.scdb", "bin", Fernet.generate_key())
-    for tableName, values in loaded_db.data.items():
-        print("Objects for:", tableName)
-        for obj in values:
-            print("     ", obj)
-    
-
-    ## reminder that good practice is to load the database if it exists, make modifications to the database table, then save over the database
-    ## if it doesnt exist then save first then the previou steps
-    ## aslong as the DB still has the table added before loading is done it should be fine
