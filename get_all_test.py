@@ -15,6 +15,8 @@ db.add_record("User", User(id=2, name="Bob", age=30))
 print(db.get("User", id=1)) # if only 1 matching object exists, then that object is returned
 # otherwise, a list is returned
 
+print(db.get("User", id=3)) # if no matching object exists, then None is returned
+
 print(db.all("User")) # Returns a list always
 print(db.get("User", name="Bob"))
 

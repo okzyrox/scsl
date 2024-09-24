@@ -242,13 +242,15 @@ class Database:
 
         return binary_data
 
-    def get(self, table_name, **kwargs) -> List[Table] | Table:
+    def get(self, table_name, **kwargs) -> List[Table] | Table | None:
         table = self.get_table(table_name)
         if table is None:
             raise ValueError(f"Table {table_name} does not exist in the database")
         records = [record for record in self.data[table_name] if all(getattr(record, field_name) == value for field_name, value in kwargs.items())]
         if len(records) == 1:
             return records[0]
+        elif len(records) == 0:
+            return None
         return records
     
     def all(self, table_name) -> List[Table]:
