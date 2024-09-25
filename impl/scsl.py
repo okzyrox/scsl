@@ -8,6 +8,7 @@ import json
 import enum
 from cryptography.fernet import Fernet
 from typing import Any, Dict, List, Optional, Type, Union
+from datetime import date, time, datetime
 
 class RelationType(enum.Enum):
     ONE_TO_ONE = "OneToOne"
@@ -75,6 +76,70 @@ class FloatField(Field):
                 raise ValueError(f"Value {value} is greater than maximum {self.max_value}")
         return value
 
+class ArrayField(Field):
+    def __init__(self, item_type: Type, max_length: int = None, **kwargs):
+        super().__init__(list, **kwargs)
+        self.item_type = item_type
+        self.max_length = max_length
+    
+    def to_dict(self):
+        return {
+            "field_type": "list",
+            "attributes": {
+                "array_type": self.item_type.__name__,
+                "max_length": self.max_length
+            }
+        }
+
+    def validate(self, value):
+        value = super().validate(value)
+        if value is not None:
+            if self.max_length is not None and len(value) > self.max_length:
+                raise ValueError(f"Array length {len(value)} is too high. ({len(value)} / {self.max_length}")
+            for item in value:
+                if not isinstance(item, self.item_type):
+                    raise TypeError(f"Expected {self.item_type.__name__}, got {type(item).__name__}")
+        return value
+
+class DateField(Field):
+    def __init__(self, **kwargs):
+        super().__init__(date, **kwargs)
+
+    def validate(self, value):
+        value = super().validate(value)
+        if value is not None and not isinstance(value, date):
+            try:
+                return date.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"Invalid date format: {value}")
+        return value
+
+class TimeField(Field):
+    def __init__(self, **kwargs):
+        super().__init__(time, **kwargs)
+
+    def validate(self, value):
+        value = super().validate(value)
+        if value is not None and not isinstance(value, time):
+            try:
+                return time.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"Invalid time format: {value}")
+        return value
+
+class DateTimeField(Field):
+    def __init__(self, **kwargs):
+        super().__init__(datetime, **kwargs)
+
+    def validate(self, value):
+        value = super().validate(value)
+        if value is not None and not isinstance(value, datetime):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"Invalid datetime format: {value}")
+        return value
+
 class BooleanField(Field):
     def __init__(self, **kwargs):
         super().__init__(bool, **kwargs)
@@ -137,6 +202,10 @@ class Table(metaclass=TableMeta):
             return obj.to_dict()
         elif isinstance(obj, RelationType):
             return str(obj)
+        elif isinstance(obj, (date, time, datetime)):
+            return obj.isoformat()
+        elif isinstance(obj, list):
+            return [Table._json_serializer(item) for item in obj]
         raise TypeError(f"Type {type(obj)} not serializable")
 
     def __str__(self):
@@ -151,6 +220,25 @@ class Table(metaclass=TableMeta):
     # might add a to_table_str function which prints it out prettily looking like a 
     # table with splitters and padding and organization
     # would be cool
+
+def python_type_to_scsl(python_type: str) -> str:
+        match python_type:
+            case "str": return "String"
+            case "int": return "Integer"
+            case "bool": return "Bool"
+            case "float": return "Float"
+            case "date": return "Date"
+            case "time": return "Time"
+            case "datetime": return "DateTime"
+            case "list": return "Array"
+            case _: return python_type  ## for models so they are supported
+    
+def python_str_to_type(python_str: str):
+    match python_str:
+        case "str": return str
+        case "int": return int
+        case "bool": return bool
+        case _: return None
 
 class Database:
     def __init__(self):
@@ -181,14 +269,6 @@ class Database:
                 schema[name][field_name] = field_dict
         return json.dumps(schema, indent=4, default=Table._json_serializer)
     
-    def _python_type_to_scsl(self, python_type: str) -> str:
-        match python_type:
-            case "str": return "String"
-            case "int": return "Integer"
-            case "bool": return "Bool"
-            case "float": return "Float"
-            case _: return python_type ## for models so they are supported
-    
     def serialize_to_binary(self):
         import struct
 
@@ -205,11 +285,22 @@ class Database:
                 return b'\x03' + struct.pack('!d', value)
             elif isinstance(value, bool):
                 return b'\x04' + struct.pack('!?', value)
-            ## TODO: char, enum, arrays(?), BinaryField stuf,
             elif value is None:
                 return b'\x05'
             elif isinstance(value, Table):
                 return b'\x06' + encode_string(value.__class__.__name__) + struct.pack('!q', id(value))
+            elif isinstance(value, date):
+                if isinstance(value, datetime):
+                    return b'\x09' + struct.pack('!IIIIII', value.year, value.month, value.day, value.hour, value.minute, value.second)
+                else:
+                    return b'\x07' + struct.pack('!III', value.year, value.month, value.day)
+            elif isinstance(value, time):
+                return b'\x08' + struct.pack('!III', value.hour, value.minute, value.second)
+            elif isinstance(value, list):
+                encoded_list = b'\x0A' + struct.pack('!I', len(value))
+                for item in value:
+                    encoded_list += encode_value(item)
+                return encoded_list
             else:
                 raise ValueError(f"Unsupported type: {type(value)}")
 
@@ -226,6 +317,9 @@ class Database:
                 if isinstance(field, RelationField):
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
                     binary_data += encode_string(str(field.relation_type))
+                elif isinstance(field, ArrayField):
+                    binary_data += encode_string(field.item_type.__name__)
+                    binary_data += struct.pack('!I', field.max_length if field.max_length is not None else 0)
 
         # cba to write a json converter for all the types
         # because that sucks
@@ -299,6 +393,22 @@ class Database:
                 obj_id = struct.unpack('!q', binary_data[index:index+8])[0]
                 index += 8
                 return (table_name, obj_id)
+            elif value_type == 0x07:
+                year, month, day = struct.unpack('!III', binary_data[index:index+12])
+                index += 12
+                return date(year, month, day)
+            elif value_type == 0x08:
+                hour, minute, second = struct.unpack('!III', binary_data[index:index+12])
+                index += 12
+                return time(hour, minute, second)
+            elif value_type == 0x09:
+                year, month, day, hour, minute, second = struct.unpack('!IIIIII', binary_data[index:index+24])
+                index += 24
+                return datetime(year, month, day, hour, minute, second)
+            elif value_type == 0x0A:
+                array_length = struct.unpack('!I', binary_data[index:index+4])[0]
+                index += 4
+                return [decode_value() for _ in range(array_length)]
             else:
                 raise ValueError(f"Unsupported value type: {value_type}")
 
@@ -320,6 +430,16 @@ class Database:
                     to = decode_string()
                     relation_type = RelationType(decode_string())
                     fields[field_name] = RelationField(to=to, relation_type=relation_type)
+                elif field_type == 'ArrayField':
+                    item_type_name = decode_string()
+                    item_type = getattr(__builtins__, item_type_name, None)
+                    if item_type is None:
+                        item_type = python_str_to_type(item_type_name)
+                    if item_type is None:
+                        raise ValueError(f"Unknown type: {item_type_name}")
+                    max_length = struct.unpack('!I', binary_data[index:index+4])[0]
+                    index += 4
+                    fields[field_name] = ArrayField(item_type, max_length if max_length > 0 else None)
                 else:
                     field_class = globals()[field_type]
                     fields[field_name] = field_class()
@@ -340,6 +460,10 @@ class Database:
                 for _ in range(num_fields):
                     field_name = decode_string()
                     value = decode_value()
+                    field = db.tables[table_name]._fields[field_name]
+                    if isinstance(field, DateTimeField) and isinstance(value, date):
+                        # TODO: fix time
+                        value = datetime.combine(value, time())
                     record_data[field_name] = value
                 record = db.tables[table_name](**record_data)
                 db.add_record(table_name, record)
@@ -351,7 +475,10 @@ class Database:
         for table_name, table in self.tables.items():
             schema.append(f"Table {table_name}:")
             for field_name, field in table._fields.items():
-                field_def = f"    {self._python_type_to_scsl(field.field_type.__name__)} {field_name}"
+                field_def = f"    {python_type_to_scsl(field.field_type.__name__)}"
+                if isinstance(field, ArrayField):
+                    field_def += f"<{python_type_to_scsl(field.item_type.__name__)}>"
+                field_def += f" {field_name}"
                 attributes = []
                 if field.primary_key:
                     attributes.append("primaryKey")
@@ -368,6 +495,9 @@ class Database:
                         attributes.append(f"min: {field.min_value}")
                     if field.max_value is not None:
                         attributes.append(f"max: {field.max_value}")
+                if isinstance(field, ArrayField):
+                    if field.max_length is not None:
+                        attributes.append(f"max_length: {field.max_length}")
                 # wack ngl, might remove it but i gotta say it looks way cleaner than the original in the write up file
 
                 # Torn between "Relation:ONE_TO_ONE" or "Relation<ONE_TO_ONE>"

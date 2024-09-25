@@ -13,10 +13,12 @@
     - [x] String
     - [x] Integer
     - [x] Float
-    - [ ] Date
-    - [ ] Time
-    - [ ] DateTime
-    - [ ] Array
+    - [x] Date
+    - [x] Time
+    - [ ] DateTime (Partial support)
+    - [x] Array:
+        - [x] of supported types (str, int, bool)
+        - [x] of customizable max length
     - [ ] Binary:
         - [ ] Sizeable Binary
         - [ ] Small
