@@ -25,7 +25,7 @@ if action == "bin":
     db.save_to_file("testdata/users.scdb", "bin")
     print("")
     print("Loading")
-    loaded_db = db.load_from_file("testdata/users.scdb")
+    loaded_db = Database.load_from_file("testdata/users.scdb")
 
     for tableName, values in loaded_db.data.items():
         print("Objects for:", tableName)
@@ -52,7 +52,7 @@ elif action == "encrypt":
 
     action = input("action (save/load): ")
     if action == "load":
-        loaded_db = db.load_from_file("testdata/encrypted_users.scdb", key)
+        loaded_db = Database.load_from_file("testdata/encrypted_users.scdb", key)
 
         for tableName, values in loaded_db.data.items():
             print("Objects for:", tableName)
