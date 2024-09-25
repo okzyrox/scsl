@@ -55,19 +55,19 @@ from impl.scsl import Database, Table, StringField, IntegerField
 
 # 1k posts long posts
 
-import random 
-import string
+# import random 
+# import string
 
-db = Database()
+# db = Database()
 
-class Post(Table):
-    id = IntegerField()
-    title = StringField()
-    content = StringField()
+# class Post(Table):
+#     id = IntegerField()
+#     title = StringField()
+#     content = StringField()
 
-db.add_table(Post)
-for i in range(1, 1001): # 1000 posts, 250 chars long content
-    db.add_record("Post", Post(id=i, title=f"Post {i}", content=''.join(random.choices(string.ascii_uppercase + string.digits, k=250))))
+# db.add_table(Post)
+# for i in range(1, 1001): # 1000 posts, 250 chars long content
+#     db.add_record("Post", Post(id=i, title=f"Post {i}", content=''.join(random.choices(string.ascii_uppercase + string.digits, k=250))))
 
-db.save_to_file("testdata/1klongposts.scdb", "bin") # 300kb
+# db.save_to_file("testdata/1klongposts.scdb", "bin") # 300kb
 # took: abt 1s.
