@@ -323,11 +323,14 @@ class Database:
 
         # cba to write a json converter for all the types
         # because that sucks
+        #ind = 1
         binary_data += struct.pack('!I', len(self.data))
         for table_name, records in self.data.items():
             binary_data += encode_string(table_name)
             binary_data += struct.pack('!I', len(records))
             for record in records:
+                #print("s-at:", ind)
+                #ind += 1
                 binary_data += struct.pack('!I', len(record._fields))
                 for field_name, field in record._fields.items():
                     binary_data += encode_string(field_name)
