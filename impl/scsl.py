@@ -38,6 +38,8 @@ class Field:
     def validate(self, value):
         if value is None and not self.null:
             raise ValueError(f"Field cannot be null")
+
+        print(self.field_type)
         if value is not None and not isinstance(value, self.field_type):
             raise TypeError(f"Expected {self.field_type.__name__}, got {type(value).__name__}")
         return value
@@ -144,18 +146,34 @@ class BooleanField(Field):
     def __init__(self, **kwargs):
         super().__init__(bool, **kwargs)
 
-
 class RelationField(Field):
-    def __init__(self, to: Union[str, Type['Table']], relation_type: RelationType, **kwargs):
+    def __init__(self, to: Union[str, Type['Table']], relation_type: RelationType, foreign_key: str = None, **kwargs):
         super().__init__(to, relation_type=relation_type, **kwargs)
         self.to = to
         self.relation_type = relation_type
+        self.foreign_key = foreign_key
+        self.field_type = to
 
     def to_dict(self):
         base_dict = super().to_dict()
         base_dict["to"] = self.to if isinstance(self.to, str) else self.to.__name__
         base_dict["relation_type"] = str(self.relation_type)
+        if self.foreign_key:
+            base_dict["foreign_key"] = self.foreign_key
         return base_dict
+
+class ManyToManyField(Field):
+    def __init__(self, to: Union[str, Type['Table']], relation_table_name: str = None, **kwargs):
+        super().__init__(list, **kwargs)
+        self.to = to
+        self.relation_table_name = relation_table_name or f"{self.__class__.__name__}_{to.__name__}"
+
+    def to_dict(self):
+        return {
+            "field_type": "ManyToMany",
+            "to": self.to if isinstance(self.to, str) else self.to.__name__,
+            "relation_table_name": self.relation_table_name
+        }
 
 class TableMeta(type):
     def __new__(cls, name, bases, attrs):
@@ -244,10 +262,22 @@ class Database:
     def __init__(self):
         self.tables: Dict[str, Type[Table]] = {}
         self.data: Dict[str, List[Table]] = {}
+        self.relation_link_tables: Dict[str, Dict[str, List[int]]] = {}
 
     def add_table(self, table: Type[Table]):
         self.tables[table.__name__] = table
         self.data[table.__name__] = []
+        self._create_link_tables(table)
+    
+    def _create_link_tables(self, table: Type[Table]):
+        for field_name, field in table._fields.items():
+            if isinstance(field, ManyToManyField):
+                link_table_name = field.relation_table_name
+                if link_table_name not in self.relation_link_tables:
+                    self.relation_link_tables[link_table_name] = {
+                        f"{table.__name__}_id": [],
+                        f"{field.to if isinstance(field.to, str) else field.to.__name__}_id": []
+                    }
 
     def get_table(self, table_name: str) -> Optional[Type[Table]]:
         return self.tables.get(table_name)
@@ -255,8 +285,19 @@ class Database:
     def add_record(self, table_name: str, record: Table):
         if table_name in self.data:
             self.data[table_name].append(record)
+            self._update_link_tables(table_name, record)
         else:
             raise ValueError(f"Table {table_name} does not exist in the database")
+
+    def _update_link_tables(self, table_name: str, record: Table):
+        for field_name, field in self.tables[table_name]._fields.items():
+            if isinstance(field, ManyToManyField):
+                link_table_name = field.relation_table_name
+                related_ids = getattr(record, field_name)
+                if related_ids:
+                    for related_id in related_ids:
+                        self.relation_link_tables[link_table_name][f"{table_name}_id"].append(hash(id(record)))
+                        self.relation_link_tables[link_table_name][f"{field.to if isinstance(field.to, str) else field.to.__name__}_id"].append(hash(id(related_id)))
 
     def to_json(self) -> str:
         schema = {}
@@ -266,7 +307,14 @@ class Database:
                 field_dict = field.to_dict()
                 if isinstance(field, RelationField):
                     field_dict["relation_type"] = str(field.relation_type)
+                    if field.foreign_key:
+                        field_dict["foreign_key"] = field.foreign_key
+                elif isinstance(field, ManyToManyField):
+                    field_dict["relation_table_name"] = field.relation_table_name
                 schema[name][field_name] = field_dict
+        
+        schema["_relation_link_tables"] = self.relation_link_tables
+
         return json.dumps(schema, indent=4, default=Table._json_serializer)
     
     def serialize_to_binary(self):
@@ -275,6 +323,9 @@ class Database:
         def encode_string(s):
             encoded = s.encode('utf-8')
             return struct.pack('!I', len(encoded)) + encoded
+        
+        def encode_bool(b):
+            return struct.pack('!?', b)
 
         def encode_value(value):
             if isinstance(value, str):
@@ -284,7 +335,7 @@ class Database:
             elif isinstance(value, float):
                 return b'\x03' + struct.pack('!d', value)
             elif isinstance(value, bool):
-                return b'\x04' + struct.pack('!?', value)
+                return b'\x04' + encode_bool(value)
             elif value is None:
                 return b'\x05'
             elif isinstance(value, Table):
@@ -317,6 +368,12 @@ class Database:
                 if isinstance(field, RelationField):
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
                     binary_data += encode_string(str(field.relation_type))
+                    binary_data += encode_bool(field.foreign_key is not None)
+                    if field.foreign_key:
+                        binary_data += encode_string(field.foreign_key)
+                elif isinstance(field, ManyToManyField):
+                    binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
+                    binary_data += encode_string(field.relation_table_name)
                 elif isinstance(field, ArrayField):
                     binary_data += encode_string(field.item_type.__name__)
                     binary_data += struct.pack('!I', field.max_length if field.max_length is not None else 0)
@@ -336,6 +393,16 @@ class Database:
                     binary_data += encode_string(field_name)
                     value = getattr(record, field_name)
                     binary_data += encode_value(value)
+        
+        binary_data += struct.pack('!I', len(self.relation_link_tables))
+        for link_table_name, link_data in self.relation_link_tables.items():
+            binary_data += encode_string(link_table_name)
+            binary_data += struct.pack('!I', len(link_data))
+            for field_name, ids in link_data.items():
+                binary_data += encode_string(field_name)
+                binary_data += struct.pack('!I', len(ids))
+                for id_value in ids:
+                    binary_data += struct.pack('!q', int(id_value))
 
         return binary_data
 
@@ -370,6 +437,12 @@ class Database:
             string = binary_data[index:index+length].decode('utf-8')
             index += length
             return string
+        
+        def decode_bool():
+            nonlocal index
+            value = struct.unpack('!?', binary_data[index:index+1])[0]
+            index += 1
+            return value
 
         def decode_value():
             nonlocal index
@@ -386,9 +459,7 @@ class Database:
                 index += 8
                 return value
             elif value_type == 0x04:
-                value = struct.unpack('!?', binary_data[index:index+1])[0]
-                index += 1
-                return value
+                return decode_bool()
             elif value_type == 0x05:
                 return None
             elif value_type == 0x06:
@@ -432,7 +503,13 @@ class Database:
                 if field_type == 'RelationField':
                     to = decode_string()
                     relation_type = RelationType(decode_string())
-                    fields[field_name] = RelationField(to=to, relation_type=relation_type)
+                    has_foreign_key = decode_bool()
+                    foreign_key = decode_string() if has_foreign_key else None
+                    fields[field_name] = RelationField(to=to, relation_type=relation_type, foreign_key=foreign_key)
+                elif field_type == 'ManyToManyField':
+                    to = decode_string()
+                    relation_table_name = decode_string()
+                    fields[field_name] = ManyToManyField(to=to, relation_table_name=relation_table_name)
                 elif field_type == 'ArrayField':
                     item_type_name = decode_string()
                     item_type = getattr(__builtins__, item_type_name, None)
@@ -470,6 +547,23 @@ class Database:
                     record_data[field_name] = value
                 record = db.tables[table_name](**record_data)
                 db.add_record(table_name, record)
+        
+        num_link_tables = struct.unpack('!I', binary_data[index:index+4])[0]
+        index += 4
+        for _ in range(num_link_tables):
+            link_table_name = decode_string()
+            num_fields = struct.unpack('!I', binary_data[index:index+4])[0]
+            index += 4
+            db.relation_link_tables[link_table_name] = {}
+            for _ in range(num_fields):
+                field_name = decode_string()
+                num_ids = struct.unpack('!I', binary_data[index:index+4])[0]
+                index += 4
+                db.relation_link_tables[link_table_name][field_name] = []
+                for _ in range(num_ids):
+                    id_value = struct.unpack('!q', binary_data[index:index+8])[0]
+                    index += 8
+                    db.relation_link_tables[link_table_name][field_name].append(id_value)
 
         return db
 
@@ -481,6 +575,10 @@ class Database:
                 field_def = f"    {python_type_to_scsl(field.field_type.__name__)}"
                 if isinstance(field, ArrayField):
                     field_def += f"<{python_type_to_scsl(field.item_type.__name__)}>"
+                elif isinstance(field, RelationField):
+                    field_def = f"    Relation<{field.relation_type}>"
+                elif isinstance(field, ManyToManyField):
+                    field_def = f"    ManyToMany"    
                 field_def += f" {field_name}"
                 attributes = []
                 if field.primary_key:
@@ -506,13 +604,23 @@ class Database:
                 # Torn between "Relation:ONE_TO_ONE" or "Relation<ONE_TO_ONE>"
                 # using the latter right now because it makes the attribute clearer to see
                 if isinstance(field, RelationField):
-                    #to_table = field.to if isinstance(field.to, str) else field.to.__name__
-                    attributes.append(f"Relation<{field.relation_type}>")
+                    attributes.append(f"to: {field.to if isinstance(field.to, str) else field.to.__name__}")
+                    if field.foreign_key:
+                        attributes.append(f"foreign_key: {field.foreign_key}")
+                elif isinstance(field, ManyToManyField):
+                    attributes.append(f"to: {field.to if isinstance(field.to, str) else field.to.__name__}")
+                    attributes.append(f"relation_table_name: {field.relation_table_name}")
                 
                 if attributes:
                     field_def += " {" + ", ".join(attributes) + "}"
                 schema.append(field_def)
             schema.append("") # padding between tables
+        for link_table_name, link_data in self.relation_link_tables.items():
+            schema.append(f"LinkTable {link_table_name}:")
+            for field_name in link_data.keys():
+                schema.append(f"    Integer {field_name}")
+            schema.append("")
+            
         return "\n".join(schema)
 
     def save_to_file(self, filename: str, format: str, encryption_key = None):
