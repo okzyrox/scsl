@@ -24,16 +24,15 @@ class PostTag(Table):
 db.add_table(User)
 db.add_table(Post)
 db.add_table(Tag)
-db.add_table(PostTag)
+db.add_table(PostTag) 
+# kinda creates duplicates in the schema files,  it makes things kinda clear but i should improve this when im less tired
 
-# Create users
 user1 = User(id=1, name="okzyrox")
 user2 = User(id=2, name="okzyrox2")
 
 db.add_record("User", user1)
 db.add_record("User", user2)
 
-# Create tags
 tag1 = Tag(id=1, name="Programming")
 tag2 = Tag(id=2, name="Epic")
 tag3 = Tag(id=3, name="SCSL")
@@ -62,7 +61,7 @@ post2 = Post(
 db.add_record("Post", post1)
 db.add_record("Post", post2)
 
-# Create PostTag relations
+# currently for testing, ideally is automatic
 post_tag1 = PostTag(post=post1, tag=tag1)
 post_tag2 = PostTag(post=post1, tag=tag3)
 post_tag3 = PostTag(post=post2, tag=tag2)
