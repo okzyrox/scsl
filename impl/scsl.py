@@ -18,20 +18,38 @@ class RelationType(enum.Enum):
     def __str__(self):
         return self.value
 
+def python_type_to_schema(python_type: str) -> str:
+        match python_type:
+            case "str": return "String"
+            case "int": return "Integer"
+            case "bool": return "Bool"
+            case "float": return "Float"
+            case "date": return "Date"
+            case "time": return "Time"
+            case "datetime": return "DateTime"
+            case "list": return "Array"
+            case _: return python_type  ## for models so they are supported
+    
+def python_str_to_type(python_str: str):
+    match python_str:
+        case "str": return str
+        case "int": return int
+        case "bool": return bool
+        case _: return None
 
 class Field:
     def __init__(self, field_type: Type, **kwargs):
         self.field_type = field_type
         self.attributes = kwargs
         self.primary_key = kwargs.get('primary_key', False)
-        self.null = kwargs.get('null', False)
+        self.null = kwargs.get('null', True)
         self.blank = kwargs.get('blank', False)
         self.default = kwargs.get('default', None)
         self.unique = kwargs.get('unique', False)
 
     def to_dict(self):
         return {
-            "field_type": self.field_type.__name__,
+            "field_type": python_type_to_schema(self.field_type.__name__),
             "attributes": self.attributes
         }
 
@@ -84,7 +102,7 @@ class ArrayField(Field):
     
     def to_dict(self):
         return {
-            "field_type": "list",
+            "field_type": "Array",
             "attributes": {
                 "array_type": self.item_type.__name__,
                 "max_length": self.max_length
@@ -157,6 +175,28 @@ class RelationField(Field):
         base_dict["relation_type"] = str(self.relation_type)
         return base_dict
 
+class ForeignKeyField(Field):
+    def __init__(self, to: Union[str, Type['Table']], **kwargs):
+        super().__init__(int, **kwargs)
+        self.to = to
+
+    def to_dict(self):
+        base_dict = super().to_dict()
+        base_dict["to"] = self.to if isinstance(self.to, str) else self.to.__name__
+        base_dict["relation_type"] = "OneToMany"
+        return base_dict
+
+class ManyToManyField(Field):
+    def __init__(self, to: Union[str, Type['Table']], **kwargs):
+        super().__init__(list, **kwargs)
+        self.to = to
+
+    def to_dict(self):
+        base_dict = super().to_dict()
+        base_dict["to"] = self.to if isinstance(self.to, str) else self.to.__name__
+        base_dict["relation_type"] = "ManyToMany"
+        return base_dict
+
 class TableMeta(type):
     def __new__(cls, name, bases, attrs):
         fields = {}
@@ -171,11 +211,20 @@ class Table(metaclass=TableMeta):
     def __init__(self, **kwargs):
         for key, field in self._fields.items():
             value = kwargs.get(key, field.default)
+            if isinstance(field, ForeignKeyField):
+                value = value.id if isinstance(value, Table) else value
+            elif isinstance(field, ManyToManyField):
+                value = [v.id if isinstance(v, Table) else v for v in value]
             setattr(self, key, field.validate(value))
 
     def __setattr__(self, key, value):
         if key in self._fields:
-            value = self._fields[key].validate(value)
+            field = self._fields[key]
+            if isinstance(field, ForeignKeyField):
+                value = value.id if isinstance(value, Table) else value
+            elif isinstance(field, ManyToManyField):
+                value = [v.id if isinstance(v, Table) else v for v in value]
+            value = field.validate(value)
         super().__setattr__(key, value)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -221,33 +270,20 @@ class Table(metaclass=TableMeta):
     # table with splitters and padding and organization
     # would be cool
 
-def python_type_to_scsl(python_type: str) -> str:
-        match python_type:
-            case "str": return "String"
-            case "int": return "Integer"
-            case "bool": return "Bool"
-            case "float": return "Float"
-            case "date": return "Date"
-            case "time": return "Time"
-            case "datetime": return "DateTime"
-            case "list": return "Array"
-            case _: return python_type  ## for models so they are supported
-    
-def python_str_to_type(python_str: str):
-    match python_str:
-        case "str": return str
-        case "int": return int
-        case "bool": return bool
-        case _: return None
-
 class Database:
     def __init__(self):
         self.tables: Dict[str, Type[Table]] = {}
         self.data: Dict[str, List[Table]] = {}
+        self.relations: Dict[str, Dict[str, List[int]]] = {}
 
     def add_table(self, table: Type[Table]):
         self.tables[table.__name__] = table
         self.data[table.__name__] = []
+        for field in table._fields.values():
+            if isinstance(field, ManyToManyField):
+                other_table_name = field.to if isinstance(field.to, str) else field.to.__name__
+                relation_table_name = f"{table.__name__}_{other_table_name}"
+                self.relations[relation_table_name] = {}
 
     def get_table(self, table_name: str) -> Optional[Type[Table]]:
         return self.tables.get(table_name)
@@ -255,8 +291,24 @@ class Database:
     def add_record(self, table_name: str, record: Table):
         if table_name in self.data:
             self.data[table_name].append(record)
+            for key, field in record._fields.items():
+                if isinstance(field, ManyToManyField):
+                    other_table_name = field.to if isinstance(field.to, str) else field.to.__name__
+                    relation_table_name = f"{table_name}_{other_table_name}"
+                    if record.id not in self.relations[relation_table_name]:
+                        self.relations[relation_table_name][record.id] = []
+                    self.relations[relation_table_name][record.id].extend(getattr(record, key))
         else:
             raise ValueError(f"Table {table_name} does not exist in the database")
+    
+    def add_records(self, table_name: str, records: List[Table]):
+        for record in records:
+            self.add_record(table_name, record)
+
+    def get_related_table_record(self, table_name: str, record_id: int, related_table_name: str) -> List[Table]:
+        relation_table_name = f"{table_name}_{related_table_name}"
+        related_ids = self.relations.get(relation_table_name, {}).get(record_id, [])
+        return [self.get(related_table_name, id=rid) for rid in related_ids]
 
     def to_json(self) -> str:
         schema = {}
@@ -320,6 +372,10 @@ class Database:
                 elif isinstance(field, ArrayField):
                     binary_data += encode_string(field.item_type.__name__)
                     binary_data += struct.pack('!I', field.max_length if field.max_length is not None else 0)
+                elif isinstance(field, ForeignKeyField):
+                    binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
+                elif isinstance(field, ManyToManyField):
+                    binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
 
         # cba to write a json converter for all the types
         # because that sucks
@@ -443,6 +499,12 @@ class Database:
                     max_length = struct.unpack('!I', binary_data[index:index+4])[0]
                     index += 4
                     fields[field_name] = ArrayField(item_type, max_length if max_length > 0 else None)
+                elif field_type == 'ForeignKeyField':
+                    to = decode_string()
+                    fields[field_name] = ForeignKeyField(to=to)
+                elif field_type == 'ManyToManyField':
+                    to = decode_string()
+                    fields[field_name] = ManyToManyField(to=to)
                 else:
                     field_class = globals()[field_type]
                     fields[field_name] = field_class()
@@ -467,6 +529,12 @@ class Database:
                     if isinstance(field, DateTimeField) and isinstance(value, date):
                         # TODO: fix time
                         value = datetime.combine(value, time())
+                    elif isinstance(field, ForeignKeyField):
+                        related_table_name, related_id = value
+                        value = db.get(related_table_name, id=related_id)
+                    elif isinstance(field, ManyToManyField):
+                        related_table_name = field.to if isinstance(field.to, str) else field.to.__name__
+                        value = [db.get(related_table_name, id=related_id) for related_id in value]
                     record_data[field_name] = value
                 record = db.tables[table_name](**record_data)
                 db.add_record(table_name, record)
@@ -478,9 +546,9 @@ class Database:
         for table_name, table in self.tables.items():
             schema.append(f"Table {table_name}:")
             for field_name, field in table._fields.items():
-                field_def = f"    {python_type_to_scsl(field.field_type.__name__)}"
+                field_def = f"    {python_type_to_schema(field.field_type.__name__)}"
                 if isinstance(field, ArrayField):
-                    field_def += f"<{python_type_to_scsl(field.item_type.__name__)}>"
+                    field_def += f"<{python_type_to_schema(field.item_type.__name__)}>"
                 field_def += f" {field_name}"
                 attributes = []
                 if field.primary_key:
@@ -508,6 +576,11 @@ class Database:
                 if isinstance(field, RelationField):
                     #to_table = field.to if isinstance(field.to, str) else field.to.__name__
                     attributes.append(f"Relation<{field.relation_type}>")
+                
+                if isinstance(field, ForeignKeyField):
+                    attributes.append(f"ForeignKey<{field.to.__name__}>")
+                if isinstance(field, ManyToManyField):
+                    attributes.append(f"ManyToMany<{field.to.__name__}>")
                 
                 if attributes:
                     field_def += " {" + ", ".join(attributes) + "}"
