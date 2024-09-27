@@ -29,19 +29,18 @@
     - [ ] Table Enums
     - [x] Relations:
         - [x] OneToOne
-        - [ ] OneToMany
-        - [ ] ManyToMany
+        - [x] OneToMany
+        - [x] ManyToMany
     
 `note: attribute support is only finished if it has proper implementaiton and validation`
 - [ ] Attribute support:
-    - [ ] primary key
-        - [ ] pk uses specific:
+    - [x] primary key
     - [x] min value + max value
     - [x] default
     - [x] null
     - [ ] blank
     - [ ] jsonMaxDepth
-    - [ ] unique
+    - [x] unique
         - [ ] start
         - [ ] change
         - [ ] sequence direction (also needs support for overflow, underflow, etc)
