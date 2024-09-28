@@ -207,6 +207,21 @@ class TableMeta(type):
         attrs['_fields'] = fields
         return super().__new__(cls, name, bases, attrs)
 
+class TableEnum:
+    def __init__(self, name: str, values: Dict[str, Any]):
+        self.name = name
+        self.values = values
+
+    def to_dict(self):
+        return {
+            "enum_name": self.name,
+            "values": self.values
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TableEnum':
+        return cls(name=data["enum_name"], values=data["values"])
+
 class Table(metaclass=TableMeta):
     def __init__(self, **kwargs):
         for key, field in self._fields.items():
@@ -275,6 +290,35 @@ class Database:
         self.tables: Dict[str, Type[Table]] = {}
         self.data: Dict[str, List[Table]] = {}
         self.relations: Dict[str, Dict[str, List[int]]] = {}
+        self.enums: Dict[str, TableEnum] = {}
+
+    def get_table(self, table_name: str) -> Optional[Type[Table]]:
+        return self.tables.get(table_name)
+
+    def get_enum(self, enum_name: str) -> Optional[TableEnum]:
+        return self.enums.get(enum_name)
+    
+    def get_related_table_record(self, table_name: str, record_id: int, related_table_name: str) -> List[Table]:
+        relation_table_name = f"{table_name}_{related_table_name}"
+        related_ids = self.relations.get(relation_table_name, {}).get(record_id, [])
+        return [self.get(related_table_name, id=rid) for rid in related_ids]
+    
+    def get(self, table_name, **kwargs) -> List[Table] | Table | None:
+        table = self.get_table(table_name)
+        if table is None:
+            raise ValueError(f"Table {table_name} does not exist in the database")
+        records = [record for record in self.data[table_name] if all(getattr(record, field_name) == value for field_name, value in kwargs.items())]
+        if len(records) == 1:
+            return records[0]
+        elif len(records) == 0:
+            return None
+        return records
+    
+    def all(self, table_name) -> List[Table]:
+        table = self.get_table(table_name)
+        if table is None:
+            raise ValueError(f"Table {table_name} does not exist in the database")
+        return self.data[table_name]
 
     def add_table(self, table: Type[Table]):
         self.tables[table.__name__] = table
@@ -284,9 +328,9 @@ class Database:
                 other_table_name = field.to if isinstance(field.to, str) else field.to.__name__
                 relation_table_name = f"{table.__name__}_{other_table_name}"
                 self.relations[relation_table_name] = {}
-
-    def get_table(self, table_name: str) -> Optional[Type[Table]]:
-        return self.tables.get(table_name)
+    
+    def add_enum(self, enum: TableEnum):
+        self.enums[enum.name] = enum
 
     def add_record(self, table_name: str, record: Table):
         if table_name in self.data:
@@ -304,22 +348,6 @@ class Database:
     def add_records(self, table_name: str, records: List[Table]):
         for record in records:
             self.add_record(table_name, record)
-
-    def get_related_table_record(self, table_name: str, record_id: int, related_table_name: str) -> List[Table]:
-        relation_table_name = f"{table_name}_{related_table_name}"
-        related_ids = self.relations.get(relation_table_name, {}).get(record_id, [])
-        return [self.get(related_table_name, id=rid) for rid in related_ids]
-
-    def to_json(self) -> str:
-        schema = {}
-        for name, table in self.tables.items():
-            schema[name] = {}
-            for field_name, field in table._fields.items():
-                field_dict = field.to_dict()
-                if isinstance(field, RelationField):
-                    field_dict["relation_type"] = str(field.relation_type)
-                schema[name][field_name] = field_dict
-        return json.dumps(schema, indent=4, default=Table._json_serializer)
     
     def serialize_to_binary(self):
         import struct
@@ -353,6 +381,8 @@ class Database:
                 for item in value:
                     encoded_list += encode_value(item)
                 return encoded_list
+            elif isinstance(value, TableEnum):
+                return b'\x0B' + encode_string(value.name)
             else:
                 raise ValueError(f"Unsupported type: {type(value)}")
 
@@ -376,6 +406,11 @@ class Database:
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
                 elif isinstance(field, ManyToManyField):
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
+        # enums
+        binary_data += struct.pack('!I', len(self.enums))
+        for enum_name, enum in self.enums.items():
+            binary_data += encode_string(enum_name)
+            binary_data += encode_string(json.dumps(enum.values))
 
         # cba to write a json converter for all the types
         # because that sucks
@@ -394,23 +429,6 @@ class Database:
                     binary_data += encode_value(value)
 
         return binary_data
-
-    def get(self, table_name, **kwargs) -> List[Table] | Table | None:
-        table = self.get_table(table_name)
-        if table is None:
-            raise ValueError(f"Table {table_name} does not exist in the database")
-        records = [record for record in self.data[table_name] if all(getattr(record, field_name) == value for field_name, value in kwargs.items())]
-        if len(records) == 1:
-            return records[0]
-        elif len(records) == 0:
-            return None
-        return records
-    
-    def all(self, table_name) -> List[Table]:
-        table = self.get_table(table_name)
-        if table is None:
-            raise ValueError(f"Table {table_name} does not exist in the database")
-        return self.data[table_name]
 
     @classmethod
     def deserialize_from_binary(cls, binary_data):
@@ -468,6 +486,10 @@ class Database:
                 array_length = struct.unpack('!I', binary_data[index:index+4])[0]
                 index += 4
                 return [decode_value() for _ in range(array_length)]
+            elif value_type == 0x0B:
+                enum_name = decode_string()
+                enum_values = json.loads(decode_string())
+                return TableEnum(enum_name, enum_values)
             else:
                 raise ValueError(f"Unsupported value type: {value_type}")
 
@@ -511,6 +533,14 @@ class Database:
             table_class = type(table_name, (Table,), fields)
             db.add_table(table_class)
 
+        # enums
+        num_enums = struct.unpack('!I', binary_data[index:index+4])[0]
+        index += 4
+        for _ in range(num_enums):
+            enum_name = decode_string()
+            enum_values = json.loads(decode_string())
+            db.add_enum(TableEnum(enum_name, enum_values))
+        
         # data
         num_data_tables = struct.unpack('!I', binary_data[index:index+4])[0]
         index += 4
@@ -540,6 +570,18 @@ class Database:
                 db.add_record(table_name, record)
 
         return db
+    
+    def to_json(self) -> str:
+        schema = {}
+        for name, table in self.tables.items():
+            schema[name] = {}
+            for field_name, field in table._fields.items():
+                field_dict = field.to_dict()
+                if isinstance(field, RelationField):
+                    field_dict["relation_type"] = str(field.relation_type)
+                schema[name][field_name] = field_dict
+        schema["enums"] = {name: enum.to_dict() for name, enum in self.enums.items()}
+        return json.dumps(schema, indent=4, default=Table._json_serializer)
 
     def to_scsl(self) -> str:
         schema = []
@@ -586,6 +628,11 @@ class Database:
                     field_def += " {" + ", ".join(attributes) + "}"
                 schema.append(field_def)
             schema.append("") # padding between tables
+        for enum_name, enum in self.enums.items():
+            schema.append(f"Enum {enum_name}:")
+            for key, value in enum.values.items():
+                schema.append(f"    {key} as {value}")
+            schema.append("")  # padding between enums
         return "\n".join(schema)
 
     def save_to_file(self, filename: str, format: str, encryption_key = None):
