@@ -607,12 +607,20 @@ class Database:
 
     def to_scsl(self) -> str:
         schema = []
+        for enum_name, enum in self.enums.items():
+            schema.append(f"Enum {enum_name}:")
+            for key, value in enum.values.items():
+                schema.append(f"    {key} as {value}")
+            schema.append("")  # padding between enums
+        
         for table_name, table in self.tables.items():
             schema.append(f"Table {table_name}:")
             for field_name, field in table._fields.items():
                 field_def = f"    {python_type_to_schema(field.field_type.__name__)}"
                 if isinstance(field, ArrayField):
                     field_def += f"<{python_type_to_schema(field.item_type.__name__)}>"
+                if isinstance(field, EnumField):
+                    field_def = f"    Enum.{field.enum.name}"
                 field_def += f" {field_name}"
                 attributes = []
                 if field.primary_key:
@@ -650,11 +658,6 @@ class Database:
                     field_def += " {" + ", ".join(attributes) + "}"
                 schema.append(field_def)
             schema.append("") # padding between tables
-        for enum_name, enum in self.enums.items():
-            schema.append(f"Enum {enum_name}:")
-            for key, value in enum.values.items():
-                schema.append(f"    {key} as {value}")
-            schema.append("")  # padding between enums
         return "\n".join(schema)
 
     def save_to_file(self, filename: str, format: str, encryption_key = None):
