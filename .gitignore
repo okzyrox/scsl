@@ -6,3 +6,5 @@ generated_schema.scsl
 testdata/*
 __pycache__
 !ext/**
+node_modules/**
+*.vsix
