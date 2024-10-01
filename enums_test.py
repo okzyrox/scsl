@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, StringField, IntegerField, TableEnum
+from impl.scsl import Database, Table, StringField, EnumField, TableEnum
 
 job_enum = TableEnum(name="Job", values={
     "Accountant": 1,
@@ -7,15 +7,15 @@ job_enum = TableEnum(name="Job", values={
 })
 
 title_enum = TableEnum(name="Title", values={
-    "Mr": "mr",
-    "Mrs": "mrs",
-    "Dr": "dr"
+    "Mr": 1,
+    "Mrs": 2,
+    "Dr": 3
 })
 
 class Person(Table):
     name = StringField()
-    job = IntegerField()
-    title = StringField()
+    job = EnumField(job_enum)
+    title = EnumField(title_enum)
 
 db = Database()
 
@@ -23,7 +23,7 @@ db.add_enum(title_enum)
 db.add_enum(job_enum)
 db.add_table(Person)
 
-person = Person(name="okzyrox", job=job_enum.values["Ceo"], title=title_enum.values["Mr."])
+person = Person(name="okzyrox", job=job_enum.values["Ceo"], title=title_enum.values["Mr"])
 
 db.add_record("Person", person)
 

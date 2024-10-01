@@ -197,16 +197,6 @@ class ManyToManyField(Field):
         base_dict["relation_type"] = "ManyToMany"
         return base_dict
 
-class TableMeta(type):
-    def __new__(cls, name, bases, attrs):
-        fields = {}
-        for key, value in attrs.items():
-            if isinstance(value, Field):
-                fields[key] = value
-                attrs[key] = None
-        attrs['_fields'] = fields
-        return super().__new__(cls, name, bases, attrs)
-
 class TableEnum:
     def __init__(self, name: str, values: Dict[str, Any]):
         self.name = name
@@ -221,6 +211,32 @@ class TableEnum:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TableEnum':
         return cls(name=data["enum_name"], values=data["values"])
+
+class EnumField(Field):
+    def __init__(self, enum: TableEnum, **kwargs):
+        super().__init__(int, **kwargs)
+        self.enum = enum
+
+    def to_dict(self):
+        base_dict = super().to_dict()
+        base_dict["enum"] = self.enum.name
+        return base_dict
+
+    def validate(self, value):
+        value = super().validate(value)
+        if value is not None and value not in self.enum.values.values():
+            raise ValueError(f"Value {value} is not a valid member of enum {self.enum.name}")
+        return value
+
+class TableMeta(type):
+    def __new__(cls, name, bases, attrs):
+        fields = {}
+        for key, value in attrs.items():
+            if isinstance(value, Field):
+                fields[key] = value
+                attrs[key] = None
+        attrs['_fields'] = fields
+        return super().__new__(cls, name, bases, attrs)
 
 class Table(metaclass=TableMeta):
     def __init__(self, **kwargs):
@@ -241,7 +257,6 @@ class Table(metaclass=TableMeta):
                 value = [v.id if isinstance(v, Table) else v for v in value]
             value = field.validate(value)
         super().__setattr__(key, value)
-
     def to_dict(self) -> Dict[str, Any]:
         return {key: getattr(self, key) for key in self._fields}
 
@@ -388,6 +403,12 @@ class Database:
 
         binary_data = b''
 
+        # enums
+        binary_data += struct.pack('!I', len(self.enums))
+        for enum_name, enum in self.enums.items():
+            binary_data += encode_string(enum_name)
+            binary_data += encode_string(json.dumps(enum.values))
+
         # da tables (this took me too long to figure out)
         binary_data += struct.pack('!I', len(self.tables))
         for table_name, table_class in self.tables.items():
@@ -406,12 +427,9 @@ class Database:
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
                 elif isinstance(field, ManyToManyField):
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
-        # enums
-        binary_data += struct.pack('!I', len(self.enums))
-        for enum_name, enum in self.enums.items():
-            binary_data += encode_string(enum_name)
-            binary_data += encode_string(json.dumps(enum.values))
-
+                elif isinstance(field, EnumField):
+                    binary_data += encode_string(field.enum.name)
+    
         # cba to write a json converter for all the types
         # because that sucks
         #ind = 1
@@ -496,6 +514,14 @@ class Database:
         index = 0
         db = cls()
 
+        # enums
+        num_enums = struct.unpack('!I', binary_data[index:index+4])[0]
+        index += 4
+        for _ in range(num_enums):
+            enum_name = decode_string()
+            enum_values = json.loads(decode_string()) 
+            db.add_enum(TableEnum(enum_name, enum_values))
+
         # tables
         num_tables = struct.unpack('!I', binary_data[index:index+4])[0]
         index += 4
@@ -527,19 +553,15 @@ class Database:
                 elif field_type == 'ManyToManyField':
                     to = decode_string()
                     fields[field_name] = ManyToManyField(to=to)
+                elif field_type == 'EnumField':
+                    enum_name = decode_string()
+                    enum = db.get_enum(enum_name)
+                    fields[field_name] = EnumField(enum)
                 else:
                     field_class = globals()[field_type]
                     fields[field_name] = field_class()
             table_class = type(table_name, (Table,), fields)
             db.add_table(table_class)
-
-        # enums
-        num_enums = struct.unpack('!I', binary_data[index:index+4])[0]
-        index += 4
-        for _ in range(num_enums):
-            enum_name = decode_string()
-            enum_values = json.loads(decode_string())
-            db.add_enum(TableEnum(enum_name, enum_values))
         
         # data
         num_data_tables = struct.unpack('!I', binary_data[index:index+4])[0]
