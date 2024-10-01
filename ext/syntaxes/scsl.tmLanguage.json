@@ -5,7 +5,7 @@
     "patterns": [
       {
         "name": "keyword.control.scsl",
-        "match": "\\b(Table|Enum|RelationTable)\\b"
+        "match": "\\b(Table|Enum|and|or|as|not)\\b"
       },
       {
         "name": "storage.type.scsl",
