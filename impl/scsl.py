@@ -595,14 +595,16 @@ class Database:
     
     def to_json(self) -> str:
         schema = {}
+        schema["enums"] = {name: enum.to_dict() for name, enum in self.enums.items()}
         for name, table in self.tables.items():
             schema[name] = {}
             for field_name, field in table._fields.items():
                 field_dict = field.to_dict()
                 if isinstance(field, RelationField):
                     field_dict["relation_type"] = str(field.relation_type)
+                if isinstance(field, EnumField):
+                    field_dict["field_type"] = "Enum"
                 schema[name][field_name] = field_dict
-        schema["enums"] = {name: enum.to_dict() for name, enum in self.enums.items()}
         return json.dumps(schema, indent=4, default=Table._json_serializer)
 
     def to_scsl(self) -> str:
