@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enum: {{ enum.name }}</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Enum: {{ enum.name }}</h1>
+        <ul class="list-group mt-4">
+            {% for key, value in enum.values.items() %}
+                <li class="list-group-item">{{ key }}: {{ value }}</li>
+            {% endfor %}
+        </ul>
+        <a href="{{ url_for('index') }}" class="btn btn-primary mt-3">Back to Home</a>
+    </div>
+</body>
+</html>

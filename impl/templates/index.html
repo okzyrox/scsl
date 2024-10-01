@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Database Admin Panel</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Database Admin Panel</h1>
+        <h2 class="mt-4">Tables</h2>
+        <ul class="list-group">
+            {% for table_name in tables %}
+                <li class="list-group-item"><a href="{{ url_for('view_table', table_name=table_name) }}">{{ table_name }}</a></li>
+            {% endfor %}
+        </ul>
+        <h2 class="mt-4">Enums</h2>
+        <ul class="list-group">
+            {% for enum_name in enums %}
+                <li class="list-group-item"><a href="{{ url_for('view_enum', enum_name=enum_name) }}">{{ enum_name }}</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+</html>

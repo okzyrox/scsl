@@ -9,6 +9,7 @@ import enum
 from cryptography.fernet import Fernet
 from typing import Any, Dict, List, Optional, Type, Union
 from datetime import date, time, datetime
+from flask import Flask, request, redirect, url_for, render_template, jsonify
 
 class RelationType(enum.Enum):
     ONE_TO_ONE = "OneToOne"
@@ -57,7 +58,12 @@ class Field:
         if value is None and not self.null:
             raise ValueError(f"Field cannot be null")
         if value is not None and not isinstance(value, self.field_type):
-            raise TypeError(f"Expected {self.field_type.__name__}, got {type(value).__name__}")
+            # this might be better for short term problems
+            # if we cant directly convert the value, raise an error
+            try:
+                value = self.field_type(value) # this feels like a maximum penalty state prison level crime against the python programming community
+            except:
+                raise TypeError(f"Expected {self.field_type.__name__}, got {type(value).__name__}")
         return value
 
 class StringField(Field):
@@ -306,6 +312,82 @@ class Database:
         self.data: Dict[str, List[Table]] = {}
         self.relations: Dict[str, Dict[str, List[int]]] = {}
         self.enums: Dict[str, TableEnum] = {}
+
+    
+    def run_admin_panel(self, port=5000, debug=True):
+        app = Flask(__name__)
+
+        @app.template_filter('getattr')
+        def getattr_filter(obj, attr):
+            return getattr(obj, attr)
+
+        app.jinja_env.filters['getattr'] = getattr_filter
+
+        @app.template_filter('is_relation_field')
+        def is_relation_field(field):
+            return isinstance(field, RelationField)
+
+        app.jinja_env.filters['is_relation_field'] = is_relation_field
+
+        @app.route('/')
+        def index():
+            return render_template('index.html', tables=self.tables, enums=self.enums)
+
+        @app.route('/table/<table_name>')
+        def view_table(table_name):
+            table = self.tables.get(table_name)
+            if table is None:
+                return "Table not found", 404
+            records = self.data.get(table_name, [])
+            return render_template('table.html', table=table, records=records)
+    
+        @app.route('/table/<table_name>/<int:record_id>')
+        def view_record(table_name, record_id):
+            table = self.tables.get(table_name)
+            if table is None:
+                return "Table not found", 404
+            record = next((r for r in self.data.get(table_name, []) if r.id == record_id), None)
+            if record is None:
+                return "Record not found", 404
+            return render_template('record.html', table=table, record=record)
+        
+        @app.route('/table/<table_name>/<int:record_id>/edit', methods=['GET', 'POST'])
+        def edit_record(table_name, record_id):
+            table = self.tables.get(table_name)
+            if table is None:
+                return "Table not found", 404
+            record = next((r for r in self.data.get(table_name, []) if r.id == record_id), None)
+            if record is None:
+                return "Record not found", 404
+
+            if request.method == 'POST':
+                for key, field in table._fields.items():
+                    if key in request.form:
+                        value = request.form[key]
+                        if isinstance(field, ForeignKeyField):
+                            related_table = self.get_table(field.to)
+                            related_record = self.get(related_table.__name__, id=int(value))
+                            value = related_record
+                        elif isinstance(field, ManyToManyField):
+                            related_table = self.get_table(field.to)
+                            related_records = [self.get(related_table.__name__, id=int(v)) for v in value.split(',')]
+                            value = related_records
+                        setattr(record, key, value)
+                return redirect(url_for('view_record', table_name=table_name, record_id=record_id))
+
+            return render_template('record_edit.html', table=table, record=record)
+
+        @app.route('/enum/<enum_name>')
+        def view_enum(enum_name):
+            enum = self.enums.get(enum_name)
+            if enum is None:
+                return "Enum not found", 404
+            return render_template('enum.html', enum=enum)
+
+        app.run(
+            port = port,
+            debug = debug
+        )
 
     def get_table(self, table_name: str) -> Optional[Type[Table]]:
         return self.tables.get(table_name)

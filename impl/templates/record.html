@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Record: {{ table.__name__ }} - {{ record.id }}</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Record: {{ table.__name__ }} - {{ record.id }}</h1>
+        <table class="table table-bordered mt-4">
+            <tbody>
+                {% for field_name in table._fields %}
+                    <tr>
+                        <th>{{ field_name }}</th>
+                        {% if table._fields[field_name]|is_relation_field %}
+                            <td><a href="{{ url_for('view_record', table_name=table._fields[field_name].to.__name__, record_id=record.id) }}">{{ record|getattr(field_name) }}</a></td>
+                        {% else %}
+                            <td>{{ record|getattr(field_name) }}</td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <a href="{{ url_for('view_table', table_name=table.__name__) }}" class="btn btn-primary mt-3">Back to Table</a>
+        <a href="{{ url_for('edit_record', table_name=table.__name__, record_id=record.id) }}" class="btn btn-secondary mt-3">Edit</a>
+    </div>
+</body>
+</html>

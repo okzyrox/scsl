@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Table: {{ table.__name__ }}</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Table: {{ table.__name__ }}</h1>
+        <table class="table table-bordered mt-4">
+            <thead class="thead-dark">
+                <tr>
+                    {% for field_name in table._fields %}
+                        <th>{{ field_name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                    <tr>
+                        {% for field_name in table._fields %}
+                            {% if table._fields[field_name]|is_relation_field %}
+                                <td>
+                                    {% set related_record = record|getattr(field_name) %}
+                                    <a href="{{ url_for('view_record', table_name=table._fields[field_name].to.__name__, record_id=related_record.id) }}">{{ related_record.id }}</a>
+                                </td>
+                            {% else %}
+                                <td><a href="{{ url_for('view_record', table_name=table.__name__, record_id=record.id) }}">{{ record|getattr(field_name) }}</a></td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <a href="{{ url_for('index') }}" class="btn btn-primary mt-3">Back to Home</a>
+    </div>
+</body>
+</html>
