@@ -37,3 +37,12 @@ print(tbl.members) # returns pk id's
 db.save_to_file("testdata/otm.scdb", "bin")
 db.save_to_file("testdata/otm.scsl", "scsl")
 db.save_to_file("testdata/otm.json", "json")
+
+print("\nReloading\n")
+new_db = Database.load_from_file("testdata/otm.scdb")
+loaded_tbl = new_db.get("Group", id=1)
+print(loaded_tbl)
+
+print(new_db.get("User", id=1))
+
+new_db.run_admin_panel(save_path="testdata/otm.scdb")

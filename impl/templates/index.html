@@ -20,6 +20,15 @@
                 <li class="list-group-item"><a href="{{ url_for('view_enum', enum_name=enum_name) }}">{{ enum_name }}</a></li>
             {% endfor %}
         </ul>
+        <h2 class="mt-4">File</h2>
+        <ul class="list-group">
+            <form method="POST" action="{{ url_for('save') }}">
+                <button type="submit" class="btn btn-danger">Save Database Changes</button>
+            </form>
+            <form method="POST" action="{{ url_for('reload') }}">
+                <button type="submit" class="btn btn-primary">Reload Database</button>
+            </form>
+        </ul>
     </div>
 </body>
 </html>

@@ -314,7 +314,7 @@ class Database:
         self.enums: Dict[str, TableEnum] = {}
 
     
-    def run_admin_panel(self, port=5000, debug=True):
+    def run_admin_panel(self, port=5000, debug=True, save_path="database.scdb"):
         app = Flask(__name__)
 
         @app.template_filter('getattr')
@@ -383,6 +383,19 @@ class Database:
             if enum is None:
                 return "Enum not found", 404
             return render_template('enum.html', enum=enum)
+        
+        @app.route('/save', methods=['POST'])
+        def save():
+            self.save_to_file(save_path, "bin")
+            return redirect(url_for('index'))
+        
+        @app.route('/reload', methods=['POST'])
+        def reload():
+            try:
+                self.load_from_file(save_path)
+            except:
+                return "Couldn't reload database", 500
+            return redirect(url_for('index'))
 
         app.run(
             port = port,
@@ -465,7 +478,7 @@ class Database:
             elif value is None:
                 return b'\x05'
             elif isinstance(value, Table):
-                return b'\x06' + encode_string(value.__class__.__name__) + struct.pack('!q', id(value))
+                return b'\x06' + encode_string(value.__class__.__name__) + struct.pack('!q', value.id)
             elif isinstance(value, date):
                 if isinstance(value, datetime):
                     return b'\x09' + struct.pack('!IIIIII', value.year, value.month, value.day, value.hour, value.minute, value.second)
@@ -664,7 +677,8 @@ class Database:
                         # TODO: fix time
                         value = datetime.combine(value, time())
                     elif isinstance(field, ForeignKeyField):
-                        related_table_name, related_id = value
+                        related_table_name = field.to if isinstance(field.to, str) else field.to.__name__
+                        related_id = value
                         value = db.get(related_table_name, id=related_id)
                     elif isinstance(field, ManyToManyField):
                         related_table_name = field.to if isinstance(field.to, str) else field.to.__name__

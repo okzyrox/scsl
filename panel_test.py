@@ -27,7 +27,9 @@ for i in range(10):
 for i in range(2):
     db.add_record("House", House(id=i, name=f"house {i}", owner=db.get("User", username=f"user {i}")))
 
+db.save_to_file("testdata/paneldb.scdb", "bin")
 db.run_admin_panel(
     port = 8080,
-    debug = True
+    debug = True,
+    save_path = "testdata/paneldb.scdb"
 )
