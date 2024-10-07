@@ -335,6 +335,12 @@ class Database:
         
         app.jinja_env.filters["is_foreign_key"] = is_foreign_key_field
 
+        @app.template_filter('is_enum_field')
+        def is_enum_field(field):
+            return isinstance(field, EnumField)
+        
+        app.jinja_env.filters["is_enum_field"] = is_enum_field
+
         @app.route('/')
         def index():
             return render_template('index.html', tables=self.tables, enums=self.enums)
@@ -378,6 +384,15 @@ class Database:
                             related_table = self.get_table(field.to)
                             related_records = [self.get(related_table.__name__, id=int(v)) for v in value.split(',')]
                             value = related_records
+                        elif isinstance(field, EnumField):
+                            enum_val = request.form.get(key)
+                            value = field.enum.values[enum_val]
+                        elif isinstance(field, DateTimeField): # patch until i add a date selector in the html
+                            value = datetime.now()
+                        elif isinstance(field, DateField):
+                            value = date.today()
+                        elif isinstance(field, TimeField):
+                            value = datetime.now().time()
                         setattr(record, key, value)
                 return redirect(url_for('view_record', table_name=table_name, record_id=record_id))
 

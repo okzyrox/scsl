@@ -14,6 +14,14 @@
                     <label for="{{ field_name }}">{{ field_name }}</label>
                     {% if field|is_relation_field %}
                         <input type="text" class="form-control" id="{{ field_name }}" name="{{ field_name }}" value="{{ record|getattr(field_name)|getattr('id') }}">
+                    {% elif field|is_enum_field %}
+                        <select class="form-control" id="{{ field_name }}" name="{{ field_name }}">
+                            {% for enum_key, enum_value in field.enum.values.items() %}
+                                <option value="{{ enum_key }}" {% if record|getattr(field_name) == enum_value %}selected{% endif %}>
+                                    {{ enum_key }}
+                                </option>
+                            {% endfor %}
+                        </select>
                     {% else %}
                         <input type="text" class="form-control" id="{{ field_name }}" name="{{ field_name }}" value="{{ record|getattr(field_name) }}">
                     {% endif %}
