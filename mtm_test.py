@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, StringField, IntegerField, ForeignKeyField, ManyToManyField, RelationType
+from scdb import Database, Table, StringField, IntegerField, ForeignKeyField, ManyToManyField, RelationType
 
 class User(Table):
     id = IntegerField(primary_key=True, unique=True)

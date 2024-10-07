@@ -4,7 +4,7 @@ a functional alternative to database languages such as SQLITE, with a focus on a
 
 writeup of the thing in [SCDB.md](SCDB.md)
 
-implementation in python is in [impl](impl/scsl.py)
+implementation in python is in [scdb](scdb/__init__.py)
 
 ## License
 

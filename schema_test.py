@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, StringField, RelationField, RelationType
+from scdb import Database, Table, StringField, RelationField, RelationType
 class User(Table):
     username = StringField(max_length=100)
     password = StringField(max_length=24)

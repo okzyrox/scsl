@@ -13,7 +13,7 @@
                 {% for field_name in table._fields %}
                     <tr>
                         <th>{{ field_name }}</th>
-                        {% if table._fields[field_name]|is_relation_field %}
+                        {% if table._fields[field_name]|is_foreign_key %}
                             <td><a href="{{ url_for('view_record', table_name=table._fields[field_name].to.__name__, record_id=record.id) }}">{{ record|getattr(field_name) }}</a></td>
                         {% else %}
                             <td>{{ record|getattr(field_name) }}</td>

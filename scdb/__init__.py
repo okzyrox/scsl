@@ -329,6 +329,12 @@ class Database:
 
         app.jinja_env.filters['is_relation_field'] = is_relation_field
 
+        @app.template_filter("is_foreign_key")
+        def is_foreign_key_field(field):
+            return isinstance(field, ForeignKeyField)
+        
+        app.jinja_env.filters["is_foreign_key"] = is_foreign_key_field
+
         @app.route('/')
         def index():
             return render_template('index.html', tables=self.tables, enums=self.enums)
@@ -393,8 +399,8 @@ class Database:
         def reload():
             try:
                 self.load_from_file(save_path)
-            except:
-                return "Couldn't reload database", 500
+            except Exception as err:
+                return f"Couldn't reload database. Error: {str(err)}", 500
             return redirect(url_for('index'))
 
         app.run(

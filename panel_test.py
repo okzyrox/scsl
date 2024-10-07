@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, TableEnum, StringField, IntegerField, RelationField, RelationType
+from scdb import Database, Table, TableEnum, StringField, IntegerField, RelationField, RelationType
 class User(Table):
     id = IntegerField(primary_key=True, unique=False)
     username = StringField(max_length=100)

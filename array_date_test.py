@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, StringField, DateField, TimeField, DateTimeField, ArrayField
+from scdb import Database, Table, StringField, DateField, TimeField, DateTimeField, ArrayField
 
 from datetime import date, datetime, time
 

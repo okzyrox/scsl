@@ -1,4 +1,4 @@
-from impl.scsl import Table, StringField, Database
+from scdb import Table, StringField, Database
 from cryptography.fernet import Fernet
 
 class User(Table):

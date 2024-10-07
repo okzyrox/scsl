@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, StringField, IntegerField
+from scdb import Database, Table, StringField, IntegerField
 
 db = Database()
 

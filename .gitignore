@@ -8,3 +8,4 @@ __pycache__
 !ext/**
 node_modules/**
 *.vsix
+rbx.py

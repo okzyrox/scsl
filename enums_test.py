@@ -1,4 +1,4 @@
-from impl.scsl import Database, Table, StringField, EnumField, TableEnum
+from scdb import Database, Table, StringField, EnumField, TableEnum
 
 job_enum = TableEnum(name="Job", values={
     "Accountant": 1,
