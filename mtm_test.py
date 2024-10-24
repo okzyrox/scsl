@@ -34,3 +34,5 @@ new_db = Database.load_from_file("testdata/mtm.scdb")
 
 print(new_db.get("Group", id=1))
 print(new_db.get_related_table_record("Group", 1, "User"))
+
+new_db.run_admin_panel(save_path="testdata/mtm.scdb")

@@ -26,7 +26,7 @@
         - [ ] Big
         - [ ] Mega
     - [ ] Json
-    - [ ] Table Enums
+    - [x] Table Enums
     - [x] Relations:
         - [x] OneToOne
         - [x] OneToMany

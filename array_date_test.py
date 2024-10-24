@@ -1,8 +1,9 @@
-from scdb import Database, Table, StringField, DateField, TimeField, DateTimeField, ArrayField
+from scdb import Database, Table, StringField, IntegerField, DateField, TimeField, DateTimeField, ArrayField
 
 from datetime import date, datetime, time
 
 class User(Table):
+    id = IntegerField(primary_key=True)
     name = StringField()
     join_date = DateField()
     join_time = TimeField()
@@ -14,6 +15,7 @@ db = Database()
 db.add_table(User)
 
 user = User(
+    id=1,
     name="okzyrox",
     join_date=date(2024, 9, 25),
     join_time=time(14, 35, 0),
@@ -35,3 +37,5 @@ print(newdb.get("User", name="okzyrox"))
 
 # last_login=2024-09-25 00:00:00
 # pain
+
+newdb.run_admin_panel(save_path="testdata/arraytime.scdb")

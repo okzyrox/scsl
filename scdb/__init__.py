@@ -30,7 +30,19 @@ def python_type_to_schema(python_type: str) -> str:
             case "datetime": return "DateTime"
             case "list": return "Array"
             case _: return python_type  ## for models so they are supported
-    
+
+def schema_type_to_python_type(schema_type: str):
+    match schema_type:
+        case "String": return str
+        case "Integer": return int
+        case "Bool": return bool
+        case "Float": return float
+        case "Date": return date
+        case "Time": return time
+        case "DateTime": return datetime
+        case "Array": return list
+        case _: return schema_type    
+
 def python_str_to_type(python_str: str):
     match python_str:
         case "str": return str
@@ -110,7 +122,7 @@ class ArrayField(Field):
         return {
             "field_type": "Array",
             "attributes": {
-                "array_type": self.item_type.__name__,
+                "array_type": python_type_to_schema(self.item_type.__name__),
                 "max_length": self.max_length
             }
         }
@@ -341,6 +353,12 @@ class Database:
         
         app.jinja_env.filters["is_enum_field"] = is_enum_field
 
+        @app.template_filter('is_many_to_many_field')
+        def is_many_to_many_field(field):
+            return isinstance(field, ManyToManyField)
+        
+        app.jinja_env.filters["is_many_to_many_field"] = is_many_to_many_field
+
         @app.route('/')
         def index():
             return render_template('index.html', tables=self.tables, enums=self.enums)
@@ -537,7 +555,7 @@ class Database:
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
                     binary_data += encode_string(str(field.relation_type))
                 elif isinstance(field, ArrayField):
-                    binary_data += encode_string(field.item_type.__name__)
+                    binary_data += encode_string(python_type_to_schema(field.item_type.__name__))
                     binary_data += struct.pack('!I', field.max_length if field.max_length is not None else 0)
                 elif isinstance(field, ForeignKeyField):
                     binary_data += encode_string(field.to if isinstance(field.to, str) else field.to.__name__)
@@ -657,7 +675,7 @@ class Database:
                     item_type_name = decode_string()
                     item_type = getattr(__builtins__, item_type_name, None)
                     if item_type is None:
-                        item_type = python_str_to_type(item_type_name)
+                        item_type = schema_type_to_python_type(item_type_name)
                     if item_type is None:
                         raise ValueError(f"Unknown type: {item_type_name}")
                     max_length = struct.unpack('!I', binary_data[index:index+4])[0]

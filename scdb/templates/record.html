@@ -14,7 +14,13 @@
                     <tr>
                         <th>{{ field_name }}</th>
                         {% if table._fields[field_name]|is_foreign_key %}
-                            <td><a href="{{ url_for('view_record', table_name=table._fields[field_name].to.__name__, record_id=record.id) }}">{{ record|getattr(field_name) }}</a></td>
+                            <td><a href="{{ url_for('view_record', table_name=table._fields[field_name].to, record_id=record.id) }}">{{ record|getattr(field_name) }}</a></td>
+                        {% elif table._fields[field_name]|is_many_to_many_field %}
+                            <td>
+                                {% for item in record|getattr(field_name) %}
+                                    <a href="{{ url_for('view_record', table_name=table._fields[field_name].to, record_id=item) }}" class="btn btn-warning btn-sm m-1">{{ item }}</a>
+                                {% endfor %}
+                            </td>
                         {% else %}
                             <td>{{ record|getattr(field_name) }}</td>
                         {% endif %}

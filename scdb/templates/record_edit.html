@@ -22,6 +22,12 @@
                                 </option>
                             {% endfor %}
                         </select>
+                    {% elif field|is_many_to_many_field %}
+                        <div style="background-color: dimgrey; padding: 5px 5px 5px 5px; border-radius: 5px;">
+                            {% for item in record|getattr(field_name) %}
+                                <a href="{{ url_for('view_record', table_name=field.to, record_id=item) }}" class="btn btn-primary btn-sm m-1">{{ item }}</a>
+                            {% endfor %}
+                        </div>
                     {% else %}
                         <input type="text" class="form-control" id="{{ field_name }}" name="{{ field_name }}" value="{{ record|getattr(field_name) }}">
                     {% endif %}

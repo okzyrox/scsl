@@ -13,7 +13,7 @@
                 <tr>
                     {% for field_name in table._fields %}
                         {% if table._fields[field_name]|is_foreign_key %}
-                            <th>{{ field_name }} ({{ table._fields[field_name].to.__name__ }})</th>
+                            <th>{{ field_name }} ({{ table._fields[field_name].to }})</th>
                         {% else %}
                             <th>{{ field_name }}</th>
                         {% endif %}
@@ -26,7 +26,7 @@
                         {% for field_name in table._fields %}
                             {% if table._fields[field_name]|is_foreign_key %}
                                 <td>
-                                    <a href="{{ url_for('view_record', table_name=table._fields[field_name].to.__name__, record_id=record.id) }}">{{ record|getattr(field_name) }}</a>
+                                    <a href="{{ url_for('view_record', table_name=table._fields[field_name].to, record_id=record.id) }}">{{ record|getattr(field_name) }}</a>
                                 </td>
                             {% else %}
                                 <td><a href="{{ url_for('view_record', table_name=table.__name__, record_id=record.id) }}">{{ record|getattr(field_name) }}</a></td>
